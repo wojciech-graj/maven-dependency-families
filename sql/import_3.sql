@@ -10,5 +10,6 @@ CREATE INDEX idx_impored_packages_package_id ON imported_packages(to_package_id)
 
 CREATE TABLE versions_in_range(
     version_range TEXT NOT NULL,
-    version TEXT NOT NULL
+    version TEXT NOT NULL,
+    PRIMARY KEY (version_range, version)
 );

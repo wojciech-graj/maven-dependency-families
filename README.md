@@ -8,4 +8,6 @@ psql -d <DATABASE> -c "\copy imported FROM 'out.csv' DELIMITER ',' CSV"
 psql -d <DATABASE> -f sql/import_2.sql
 cd bundleimport && mvn exec:java && cd ..
 psql -d <DATABASE> -f sql/import_3.sql
+cd versioncheck && mvn exec:java && cd ..
+psql -d <DATABASE> -f sql/import_4.sql
 ```
