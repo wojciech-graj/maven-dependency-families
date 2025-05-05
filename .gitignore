@@ -17,3 +17,6 @@ buildNumber.properties
 doc/
 *.jar
 *.png
+
+Cargo.lock
+.env
