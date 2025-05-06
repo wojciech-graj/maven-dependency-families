@@ -220,10 +220,10 @@ CREATE TABLE sums(
     cnt INTEGER NOT NULL
 );
 
-INSERT INTO SUMS(bundle_id, cnt)
+INSERT INTO sums(bundle_id, cnt)
 SELECT
     to_bundle_id AS bundle_id,
-    cast(sum(cnt) AS REAL) AS cnt
+    sum(cnt) AS cnt
 FROM
     imported_bundle_counts
 GROUP BY

@@ -33,7 +33,7 @@ public class VersionCheck {
     private static final String INSERT_SQL = "INSERT INTO versions_in_range(version_range, version)"
             + "\n    VALUES (?, ?)";
 
-    public static void main(String[] args) throws Exception {
+    public static void main(final String[] args) throws Exception {
         try (
                 final Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
                 final PreparedStatement select = conn.prepareStatement(
@@ -79,7 +79,7 @@ public class VersionCheck {
         }
     }
 
-    private static void flushBatch(PreparedStatement statement)
+    private static void flushBatch(final PreparedStatement statement)
             throws SQLException {
         statement.executeBatch();
         statement.clearBatch();

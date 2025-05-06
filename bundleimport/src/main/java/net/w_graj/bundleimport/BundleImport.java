@@ -84,7 +84,7 @@ public class BundleImport {
             + "\n    DO UPDATE SET"
             + "\n        version = coalesce(imported_packages.version, EXCLUDED.version)";
 
-    public static void main(String[] args) throws Exception {
+    public static void main(final String[] args) throws Exception {
         try (
                 final Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
                 final PreparedStatement getBundleVersions1 = conn.prepareStatement(
@@ -160,7 +160,8 @@ public class BundleImport {
         }
     }
 
-    private static void processExportedPackage(PreparedStatement insertExportedPackage, int id, Clause clause)
+    private static void processExportedPackage(final PreparedStatement insertExportedPackage, final int id,
+            final Clause clause)
             throws SQLException {
         final String version = clause.getAttribute("version");
         insertExportedPackage.setString(1, clause.getName());
@@ -170,7 +171,8 @@ public class BundleImport {
         insertExportedPackage.addBatch();
     }
 
-    private static void processRequiredBundle(PreparedStatement insertRequiredBundle, int id, Clause clause)
+    private static void processRequiredBundle(final PreparedStatement insertRequiredBundle, final int id,
+            final Clause clause)
             throws SQLException {
         insertRequiredBundle.setInt(1, id);
         insertRequiredBundle.setString(2, clause.getAttribute("bundle-version"));
@@ -178,7 +180,8 @@ public class BundleImport {
         insertRequiredBundle.addBatch();
     }
 
-    private static void processImportedPacakge(PreparedStatement insertImportedPackage, int id, Clause clause)
+    private static void processImportedPacakge(final PreparedStatement insertImportedPackage, final int id,
+            final Clause clause)
             throws SQLException {
         insertImportedPackage.setInt(1, id);
         insertImportedPackage.setString(2, clause.getAttribute("version"));
@@ -186,7 +189,7 @@ public class BundleImport {
         insertImportedPackage.addBatch();
     }
 
-    private static void flushBatches(List<PreparedStatement> statements)
+    private static void flushBatches(final List<PreparedStatement> statements)
             throws SQLException {
         for (final PreparedStatement statement : statements) {
             statement.executeBatch();

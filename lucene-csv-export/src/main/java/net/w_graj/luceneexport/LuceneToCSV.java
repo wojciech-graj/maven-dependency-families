@@ -10,7 +10,7 @@ import java.nio.file.Paths;
 import java.util.*;
 
 public class LuceneToCSV {
-    public static void main(String[] args) throws Exception {
+    public static void main(final String[] args) throws Exception {
         if (args.length != 2)
             System.exit(1);
 
@@ -22,21 +22,21 @@ public class LuceneToCSV {
         System.out.println("Export complete: " + csvPath);
     }
 
-    public static void exportLuceneToCSV(String indexDir, String csvFile) throws Exception {
+    public static void exportLuceneToCSV(final String indexDir, final String csvFile) throws Exception {
         final FSDirectory dir = FSDirectory.open(Paths.get(indexDir));
-        try (IndexReader reader = DirectoryReader.open(dir)) {
+        try (final IndexReader reader = DirectoryReader.open(dir)) {
             final Set<String> fieldSet = new LinkedHashSet<>();
-            for (LeafReaderContext ctx : reader.leaves()) {
+            for (final LeafReaderContext ctx : reader.leaves()) {
                 final LeafReader leafReader = ctx.reader();
-                for (FieldInfo fi : leafReader.getFieldInfos()) {
+                for (final FieldInfo fi : leafReader.getFieldInfos()) {
                     fieldSet.add(fi.name);
                 }
             }
             final List<String> fields = new ArrayList<>(fieldSet);
             System.out.println("Fields: " + fields.toString());
 
-            try (BufferedWriter writer = new BufferedWriter(new FileWriter(csvFile))) {
-                for (LeafReaderContext ctx : reader.leaves()) {
+            try (final BufferedWriter writer = new BufferedWriter(new FileWriter(csvFile))) {
+                for (final LeafReaderContext ctx : reader.leaves()) {
                     final LeafReader leafReader = ctx.reader();
                     final Bits liveDocs = leafReader.getLiveDocs();
                     final int maxDoc = leafReader.maxDoc();
@@ -46,7 +46,7 @@ public class LuceneToCSV {
                         }
                         final Document doc = leafReader.document(i);
                         final List<String> row = new ArrayList<>();
-                        for (String field : fields) {
+                        for (final String field : fields) {
                             final String value = doc.get(field);
                             row.add(value == null ? "" : value);
                         }
@@ -57,19 +57,23 @@ public class LuceneToCSV {
         }
     }
 
-    private static void writeCSVRow(Writer writer, List<String> values) throws IOException {
+    private static void writeCSVRow(final Writer writer, final List<String> values) throws IOException {
         final StringBuilder sb = new StringBuilder();
         for (int i = 0; i < values.size(); i++) {
-            if (i > 0) sb.append(',');
+            if (i > 0)
+                sb.append(',');
             sb.append(csvEscape(values.get(i)));
         }
         writer.write(sb.append('\n').toString());
     }
 
-    private static String csvEscape(String value) {
-        if (value == null) return "";
-        final boolean needEscape = value.contains(",") || value.contains("\"") || value.contains("\n") || value.contains("\r");
-        if (!needEscape) return value;
+    private static String csvEscape(final String value) {
+        if (value == null)
+            return "";
+        final boolean needEscape = value.contains(",") || value.contains("\"") || value.contains("\n")
+                || value.contains("\r");
+        if (!needEscape)
+            return value;
         return "\"" + value.replace("\"", "\"\"") + "\"";
     }
 }

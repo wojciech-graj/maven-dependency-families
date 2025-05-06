@@ -11,11 +11,12 @@ use indicatif::ProgressBar;
 use reqwest::{Client, StatusCode, Url};
 use sqlx::{FromRow, PgPool, Postgres, QueryBuilder, postgres::PgPoolOptions};
 use tokio::task::JoinSet;
-use tracing::{Level, warn};
+use tokio_retry::strategy::ExponentialBackoff;
+use tracing::{Level, error, trace};
 
-const CHANNEL_SIZE: usize = 128;
-const BATCH_SIZE: usize = 128;
-const CLIENT_COUNT: usize = 64;
+const CHANNEL_SIZE: usize = 1024;
+const BATCH_SIZE: usize = 512;
+const CLIENT_COUNT: usize = 48;
 const MAVEN_URL: &str = "https://maven-central.storage.googleapis.com/maven2";
 
 #[derive(Debug, FromRow)]
@@ -57,6 +58,9 @@ SELECT
     count(*)
 FROM
     versions
+    LEFT JOIN poms ON poms.version_id = versions.id
+WHERE
+    poms.value IS NULL
 "
     )
     .fetch_one(&mut *conn)
@@ -78,6 +82,9 @@ SELECT
 FROM
     artifacts
     JOIN versions ON versions.artifact_id = artifacts.id
+    LEFT JOIN poms ON poms.version_id = versions.id
+WHERE
+    poms.value IS NULL
 "
     )
     .fetch(&mut *conn)
@@ -98,8 +105,8 @@ async fn rcv_task(
     let base_url = Url::parse(MAVEN_URL)?;
     while let Ok(rows) = rcv.recv().await {
         let mut values = Vec::with_capacity(BATCH_SIZE);
+        let num_rows = rows.len();
         for row in rows {
-            progress.inc(1);
             let mut url = base_url.clone();
             {
                 let mut segments = url
@@ -112,21 +119,54 @@ async fn rcv_task(
                 segments.push(&row.version);
                 segments.push(&format!("{}-{}.pom", row.artifact_id, row.version));
             }
-            let resp = client.get(url.clone()).send().await?;
+            let resp = match tokio_retry::Retry::spawn(
+                ExponentialBackoff::from_millis(300)
+                    .map(tokio_retry::strategy::jitter)
+                    .take(3),
+                || client.get(url.clone()).send(),
+            )
+            .await
+            {
+                Ok(resp) => resp,
+                Err(e) => {
+                    error!("failed to fetch {url}. Error: {e}");
+                    continue;
+                }
+            };
             if resp.status() == StatusCode::NOT_FOUND {
-                warn!("failed to find pom for {url}");
+                trace!("failed to find pom for {url}");
                 continue;
             }
             let resp = resp.error_for_status()?.text().await?;
             values.push((row.version_id, resp));
         }
-        let mut query: QueryBuilder<Postgres> =
-            QueryBuilder::new("INSERT INTO poms(version_id, value) ");
-        query.push_values(&values, |mut b, x| {
-            b.push_bind(x.0).push_bind(&x.1);
-        });
-        let query = query.build().persistent(false);
-        query.execute(&mut *conn).await?;
+        if !values.is_empty() {
+            let mut query: QueryBuilder<Postgres> =
+                QueryBuilder::new("INSERT INTO poms(version_id, value) ");
+            query.push_values(&values, |mut b, x| {
+                b.push_bind(x.0).push_bind(&x.1);
+            });
+            let query = query.build().persistent(false);
+            if let Err(e) = query.execute(&mut *conn).await {
+                error!("failed to write batch to database. writing row-by-row. Error: {e}");
+                for (version_id, value) in values {
+                    if let Err(e) = sqlx::query!(
+                        "
+INSERT INTO poms(version_id, value)
+    VALUES ($1, $2)
+",
+                        version_id,
+                        value
+                    )
+                    .execute(&mut *conn)
+                    .await
+                    {
+                        error!("{e}");
+                    }
+                }
+            }
+        }
+        progress.inc(num_rows.try_into()?);
     }
     Ok(())
 }
