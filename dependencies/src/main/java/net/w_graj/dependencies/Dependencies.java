@@ -10,6 +10,7 @@ import java.sql.SQLException;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.DependencyManagement;
 import org.apache.maven.model.Model;
+import org.apache.maven.model.Parent;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
 
 public class Dependencies {
@@ -26,7 +27,7 @@ public class Dependencies {
             + "\nFROM"
             + "\n    poms";
 
-    private static final String INSERT_SQL = "INSERT INTO dependencies(from_version_id, to_artifact_id, version, scope, managed)"
+    private static final String INSERT_DEPENDENCY_SQL = "INSERT INTO dependencies(from_version_id, to_artifact_id, version, scope, managed)"
             + "\nSELECT"
             + "\n    ?,"
             + "\n    id,"
@@ -39,24 +40,40 @@ public class Dependencies {
             + "\n    group_id = ?"
             + "\n    AND artifact_id = ?";
 
+    private static final String INSERT_PARENT_SQL = "INSERT INTO parents(from_artifact_id, to_artifact_id)"
+            + "\nSELECT"
+            + "\n    versions.artifact_id,"
+            + "\n    artifacts.id"
+            + "\nFROM"
+            + "\n    artifacts"
+            + "\n    FULL OUTER JOIN versions ON TRUE"
+            + "\nWHERE"
+            + "\n    versions.id = ?"
+            + "\n    AND artifacts.group_id = ?"
+            + "\n    AND artifacts.artifact_id = ?"
+        + "\nON CONFLICT(from_artifact_id, to_artifact_id)"
+        + "\n    DO NOTHING";
+
     public static void main(final String[] args) throws Exception {
         try (
                 final Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
                 final PreparedStatement select = conn.prepareStatement(
                         SELECT_SQL, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
-                final PreparedStatement insert = conn.prepareStatement(INSERT_SQL);) {
+                final PreparedStatement insertDependency = conn.prepareStatement(INSERT_DEPENDENCY_SQL);
+            final PreparedStatement insertParent = conn.prepareStatement(INSERT_PARENT_SQL);) {
             conn.setAutoCommit(false);
             select.setFetchSize(FETCH_SIZE);
             final ResultSet rs = select.executeQuery();
 
-            int row_count = 0;
-            int batch_count = 0;
+            int rowCount = 0;
+            int dependencyBatchCount = 0;
+            int parentBatchCount = 0;
             final MavenXpp3Reader reader = new MavenXpp3Reader();
 
             while (rs.next()) {
-                row_count++;
-                if (row_count % 100000 == 0)
-                    System.out.println(row_count);
+                rowCount++;
+                if (rowCount % 100000 == 0)
+                    System.out.println(rowCount);
 
                 final int versionId = rs.getInt(1);
                 final String pomS = rs.getString(2);
@@ -69,29 +86,41 @@ public class Dependencies {
                 }
 
                 for (final Dependency dependency : pom.getDependencies()) {
-                    insertDependency(insert, versionId, dependency.getVersion(), dependency.getScope(), false,
+                    insertDependency(insertDependency, versionId, dependency.getVersion(), dependency.getScope(), false,
                             dependency.getGroupId(), dependency.getArtifactId());
-                    batch_count++;
+                    dependencyBatchCount++;
 
                 }
 
                 final DependencyManagement dependencyManagement = pom.getDependencyManagement();
                 if (dependencyManagement != null) {
                     for (final Dependency dependency : dependencyManagement.getDependencies()) {
-                        insertDependency(insert, versionId, dependency.getVersion(), dependency.getScope(), true,
+                        insertDependency(insertDependency, versionId, dependency.getVersion(), dependency.getScope(), true,
                                 dependency.getGroupId(), dependency.getArtifactId());
-                        batch_count++;
+                        dependencyBatchCount++;
 
                     }
                 }
 
-                if (batch_count >= BATCH_SIZE) {
-                    flushBatch(insert);
-                    batch_count = 0;
+                final Parent parent = pom.getParent();
+                if (parent != null) {
+                    insertParent(insertParent, versionId, parent.getGroupId(), parent.getArtifactId());
+                    parentBatchCount++;
+                }
+
+                if (dependencyBatchCount >= BATCH_SIZE) {
+                    flushBatch(insertDependency);
+                    dependencyBatchCount = 0;
+                }
+
+                if (parentBatchCount >= BATCH_SIZE) {
+                    flushBatch(insertParent);
+                    parentBatchCount = 0;
                 }
             }
 
-            flushBatch(insert);
+            flushBatch(insertDependency);
+            flushBatch(insertParent);
 
             conn.commit();
         }
@@ -106,6 +135,13 @@ public class Dependencies {
         insert.setBoolean(4, managed);
         insert.setString(5, groupId);
         insert.setString(6, artifactId);
+        insert.addBatch();
+    }
+
+    private static void insertParent(final PreparedStatement insert, final int versionId, final String groupId, final String artifactId) throws SQLException {
+        insert.setInt(1, versionId);
+        insert.setString(2, groupId);
+        insert.setString(3, artifactId);
         insert.addBatch();
     }
 

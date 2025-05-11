@@ -13,4 +13,5 @@ psql -d <DATABASE> -f sql/import_4.sql
 cd scraper && cargo run --release && cd ..
 psql -d <DATABASE> -f sql/import_5.sql
 cd dependencies && mvn exec:java && cd ..
+psql -d <DATABASE> -f sql/import_6.sql
 ```

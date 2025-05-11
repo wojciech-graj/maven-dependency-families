@@ -7,3 +7,9 @@ CREATE TABLE dependencies(
     scope TEXT,
     managed BOOLEAN NOT NULL
 );
+
+CREATE TABLE parents(
+    from_artifact_id INTEGER NOT NULL REFERENCES artifacts(id),
+    to_artifact_id INTEGER NOT NULL REFERENCES artifacts(id),
+    PRIMARY KEY (from_artifact_id, to_artifact_id)
+);
