@@ -2,6 +2,8 @@ CREATE INDEX idx_dependencies_from_version_id ON dependencies(from_version_id);
 
 CREATE INDEX idx_dependencies_to_artifact_id ON dependencies(to_artifact_id);
 
+CREATE INDEX idx_dependencies_managed ON dependencies(managed);
+
 CREATE INDEX idx_dependencies_from_to ON dependencies(from_version_id, to_artifact_id);
 
 CREATE INDEX idx_parents_from_artifact_id ON parents(from_artifact_id);
@@ -241,3 +243,30 @@ CREATE TABLE communities_parents(
     artifact_id INTEGER NOT NULL PRIMARY KEY REFERENCES artifacts(id),
     community INTEGER NOT NULL
 );
+
+CREATE INDEX idx_files_sha1 ON files(sha1);
+
+CREATE TABLE unmanaged_artifact_dependency_counts(
+    from_artifact_id INTEGER NOT NULL REFERENCES artifacts(id),
+    to_artifact_id INTEGER NOT NULL REFERENCES artifacts(id),
+    cnt INTEGER NOT NULL,
+    PRIMARY KEY (from_artifact_id, to_artifact_id)
+);
+
+INSERT INTO unmanaged_artifact_dependency_counts(from_artifact_id, to_artifact_id, cnt)
+SELECT
+    versions.artifact_id AS from_artifact_id,
+    dependencies.to_artifact_id AS to_artifact_id,
+    count(*) AS cnt
+FROM
+    dependencies
+    JOIN versions ON versions.id = dependencies.from_version_id
+WHERE
+    NOT dependencies.managed
+GROUP BY
+    versions.artifact_id,
+    dependencies.to_artifact_id;
+
+CREATE INDEX idx_unmanaged_artifact_dependency_counts_from_artifact_id ON unmanaged_artifact_dependency_counts(from_artifact_id);
+
+CREATE INDEX idx_unmanaged_artifact_dependency_counts_to_artifact_id ON unmanaged_artifact_dependency_counts(to_artifact_id);

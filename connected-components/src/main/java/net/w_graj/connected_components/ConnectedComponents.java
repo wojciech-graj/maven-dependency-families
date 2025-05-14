@@ -47,7 +47,8 @@ public class ConnectedComponents {
             + "\nWHERE"
             + "\n    a_artifacts.root_group_id = ?";
 
-    private static final String INSERT_COMMUNITY_SQL = "INSERT INTO communities_parents(artifact_id, community) VALUES (?, ?)";
+    private static final String INSERT_COMMUNITY_SQL = "INSERT INTO communities_parents(artifact_id, community)"
+            + "\nVALUES (?, ?)";
 
     public static void main(final String[] args) throws Exception {
         try (
