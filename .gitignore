@@ -18,5 +18,4 @@ doc/
 *.jar
 *.png
 
-Cargo.lock
 .env

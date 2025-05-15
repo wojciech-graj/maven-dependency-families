@@ -77,3 +77,13 @@ plt.ylabel("Occurrence Count")
 plt.title("Dependencies from the Same Family\nUsed Together")
 plt.tight_layout()
 plt.savefig('../4_1.pgf')
+
+df = pd.read_csv("../consistency_scores.csv")
+
+plt.figure(figsize=(3.4, 2.55))
+plt.hist(df['score'].values, bins=10, range=(0, 1), edgecolor='black')
+plt.xlabel("Average Homogeneity Score")
+plt.ylabel("Number of Families")
+plt.title("Average Homogeneity Score of\nDependency Families")
+plt.tight_layout()
+plt.savefig('../4_2.pgf')
