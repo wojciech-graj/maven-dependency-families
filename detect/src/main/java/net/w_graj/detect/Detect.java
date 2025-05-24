@@ -17,9 +17,7 @@ import java.util.stream.IntStream;
 import nl.cwts.networkanalysis.Clustering;
 import nl.cwts.networkanalysis.ClusteringAlgorithm;
 import nl.cwts.networkanalysis.ComponentsAlgorithm;
-import nl.cwts.networkanalysis.FastLocalMovingAlgorithm;
 import nl.cwts.networkanalysis.LeidenAlgorithm;
-import nl.cwts.networkanalysis.LocalMergingAlgorithm;
 import nl.cwts.networkanalysis.LouvainAlgorithm;
 import nl.cwts.networkanalysis.Network;
 import nl.cwts.util.LargeBooleanArray;
@@ -33,9 +31,59 @@ public class Detect {
 
     private static final int FETCH_SIZE = 4096;
 
-    private static final String SELECT_NODES_SQL = "SELECT id, group_id, artifact_id FROM artifacts WHERE root_group_id = ?";
+    private static final String SELECT_NODES_SQL = "SELECT"
+            + "\n    id,"
+            + "\n    group_id,"
+            + "\n    artifact_id"
+            + "\nFROM"
+            + "\n    artifacts"
+            + "\nWHERE"
+            + "\n    root_group_id = ?";
 
-    private static final String SELECT_EDGES_SQL = "SELECT coalesce(p.a, s.a_artifact_id) AS a_artifact_id, coalesce(p.b, s.b_artifact_id) AS b_artifact_id, p.is_parent, s.coeff FROM ( SELECT LEAST(from_artifact_id, to_artifact_id) AS a, GREATEST(from_artifact_id, to_artifact_id) AS b, TRUE AS is_parent FROM parents) p FULL OUTER JOIN self_artifact_overlap_coefficients s ON p.a = s.a_artifact_id AND p.b = s.b_artifact_id JOIN artifacts a1 ON a1.id = coalesce(p.a, s.a_artifact_id) AND a1.root_group_id = ? JOIN artifacts a2 ON a2.id = coalesce(p.b, s.b_artifact_id) AND a2.root_group_id = ?;";
+    private static final String SELECT_EDGES_SQL = "WITH group_artifacts AS ("
+            + "\n    SELECT"
+            + "\n        id"
+            + "\n    FROM"
+            + "\n        artifacts"
+            + "\n    WHERE"
+            + "\n        root_group_id = ?"
+            + "\n),"
+            + "\nparent_pairs AS ("
+            + "\n    SELECT"
+            + "\n        LEAST(p.from_artifact_id, p.to_artifact_id) AS a,"
+            + "\n    GREATEST(p.from_artifact_id, p.to_artifact_id) AS b,"
+            + "\n    TRUE AS is_parent"
+            + "\nFROM"
+            + "\n    parents p"
+            + "\n    JOIN group_artifacts ga1 ON ga1.id = p.from_artifact_id"
+            + "\n    JOIN group_artifacts ga2 ON ga2.id = p.to_artifact_id"
+            + "\n),"
+            + "\nall_pairs AS ("
+            + "\n    SELECT"
+            + "\n        a,"
+            + "\n        b,"
+            + "\n        is_parent,"
+            + "\n        NULL::NUMERIC AS coeff"
+            + "\n    FROM"
+            + "\n        parent_pairs"
+            + "\nUNION"
+            + "\nSELECT"
+            + "\n    s.a_artifact_id,"
+            + "\n    s.b_artifact_id,"
+            + "\n    FALSE,"
+            + "\n    s.coeff"
+            + "\nFROM"
+            + "\n    self_artifact_overlap_coefficients s"
+            + "\n    JOIN group_artifacts ga1 ON ga1.id = s.a_artifact_id"
+            + "\n    JOIN group_artifacts ga2 ON ga2.id = s.b_artifact_id"
+            + "\n)"
+            + "\nSELECT"
+            + "\n    ap.a AS a_artifact_id,"
+            + "\n    ap.b AS b_artifact_id,"
+            + "\n    ap.is_parent,"
+            + "\n    ap.coeff"
+            + "\nFROM"
+            + "\n    all_pairs ap";
 
     private static final List<String> testGroupIds = List.of("org.junit", "org.slf4j", "com.google", "org.apache",
             "io.github", "org.eclipse", "org.wso2", "app.cash", "io.circe", "org.scalatest",
@@ -73,6 +121,18 @@ public class Detect {
         }
     }
 
+    private static class FalseDiscoveryRate implements ExternalEvaluation {
+        public double eval(final int tp, final int fp, final int fn) {
+            return ((float) fp) / (tp + fp);
+        }
+    }
+
+    private static class FalseNegativeRate implements ExternalEvaluation {
+        public double eval(final int tp, final int fp, final int fn) {
+            return ((float) fn) / (tp + fn);
+        }
+    }
+
     private static class TestGroup {
         public final int nNodes;
         public final List<List<Integer>> families;
@@ -84,7 +144,7 @@ public class Detect {
                 final String rootGroupId,
                 final List<String> familyGroupIds) throws SQLException {
             selectEdges.setString(1, rootGroupId);
-            selectEdges.setString(2, rootGroupId);
+            // selectEdges.setString(2, rootGroupId);
             selectNodes.setString(1, rootGroupId);
             final Map<Integer, Integer> nodes = new HashMap<>();
             this.families = IntStream.range(0, familyGroupIds.size())
@@ -94,8 +154,8 @@ public class Detect {
             final ResultSet nodeRs = selectNodes.executeQuery();
             int i = 0;
             while (nodeRs.next()) {
-                int id = nodeRs.getInt(1);
-                String groupId = nodeRs.getString(2);
+                final int id = nodeRs.getInt(1);
+                final String groupId = nodeRs.getString(2);
                 nodes.put(id, i);
                 for (int j = 0; j < familyGroupIds.size(); j++)
                     if (groupId.startsWith(familyGroupIds.get(j)))
@@ -119,31 +179,43 @@ public class Detect {
         }
 
         public double[] test(ClusteringAlgorithm algo, double alpha, List<ExternalEvaluation> eval) {
-            LargeDoubleArray edgeWeights = new LargeDoubleArray(0);
+            final LargeDoubleArray edgeWeights = new LargeDoubleArray(0);
+            final LargeIntArray[] edges = new LargeIntArray[2];
+            edges[0] = new LargeIntArray(0);
+            edges[1] = new LargeIntArray(0);
             for (int i = 0; i < this.edgeParents.size(); i++) {
-                double x;
                 final double coeff = this.edgeCoeffs.get(i);
-                final boolean parent = this.edgeParents.get(i);
-                if (parent) {
-                    if (coeff == 0.0)
-                        x = alpha;
-                    else
-                        x = coeff + (1.0 - coeff) * alpha;
-                } else {
-                    x = coeff;
-                }
-                edgeWeights.append(x);
+                final double parent = this.edgeParents.get(i) ? 1.0 : 0.0;
+                final double weight = parent * alpha + coeff * (1.0 - alpha);
+                if (weight <= 1e-6)
+                    continue;
+                edges[0].append(this.edges[0].get(i));
+                edges[1].append(this.edges[1].get(i));
+                edgeWeights.append(weight);
             }
 
-            Network network = new Network(this.nNodes, false, edges, edgeWeights, false, true);
-            double[] score = new double[eval.size()];
+            final double[] score = new double[eval.size()];
+
+            if (edgeWeights.size() == 0) {
+                for (int i = 0; i < eval.size(); i++) {
+                    for (final List<Integer> family : this.families) {
+                        final int tp = 1;
+                        final int fp = 0;
+                        final int fn = family.size() - tp;
+                        score[i] += eval.get(i).eval(tp, fp, fn);
+                    }
+                }
+                return score;
+            }
+
+            final Network network = new Network(this.nNodes, false, edges, edgeWeights, false, false);
 
             final Clustering clustering = algo.findClustering(network);
 
             for (int i = 0; i < eval.size(); i++) {
-                for (List<Integer> family : this.families) {
+                for (final List<Integer> family : this.families) {
                     final Map<Integer, Integer> frequencyMap = new HashMap<>();
-                    for (Integer node : family) {
+                    for (final Integer node : family) {
                         final int element = clustering.getCluster(node);
                         frequencyMap.put(element, frequencyMap.getOrDefault(element, 0) + 1);
                     }
@@ -154,7 +226,6 @@ public class Detect {
                     final int tp = x.getValue();
                     final int fp = clustering.getNNodesPerCluster()[mode] - tp;
                     final int fn = family.size() - tp;
-                    //System.out.printf("%d,%d,%d\n", tp, fp, fn);
                     score[i] += eval.get(i).eval(tp, fp, fn);
                 }
             }
@@ -166,19 +237,20 @@ public class Detect {
     private static class TestCorpus {
         public final List<TestGroup> tests;
 
-        public TestCorpus(PreparedStatement selectEdges, PreparedStatement selectNodes, List<String> rootGroupIds,
-                List<List<String>> familyGroupIds) throws SQLException {
+        public TestCorpus(final PreparedStatement selectEdges, final PreparedStatement selectNodes,
+                final List<String> rootGroupIds,
+                final List<List<String>> familyGroupIds) throws SQLException {
             this.tests = new ArrayList<>();
             for (int i = 0; i < rootGroupIds.size(); i++)
                 this.tests.add(new TestGroup(selectEdges, selectNodes, rootGroupIds.get(i), familyGroupIds.get(i)));
         }
 
-        public double[] test(ClusteringAlgorithm algo, double alpha, List<ExternalEvaluation> eval) {
-            double[] scores = new double[eval.size()];
+        public double[] test(final ClusteringAlgorithm algo, final double alpha, final List<ExternalEvaluation> eval) {
+            final double[] scores = new double[eval.size()];
             int count = 0;
 
-            for (TestGroup test : this.tests) {
-                double[] testScore = test.test(algo, alpha, eval);
+            for (final TestGroup test : this.tests) {
+                final double[] testScore = test.test(algo, alpha, eval);
                 for (int i = 0; i < testScore.length; i++)
                     scores[i] += testScore[i];
                 count += test.families.size();
@@ -196,7 +268,8 @@ public class Detect {
         public final ClusteringAlgorithm algorithm;
         public final double alpha;
 
-        public AlgorithmConfig(Map<String, Object> parameters, ClusteringAlgorithm algorithm, double alpha) {
+        public AlgorithmConfig(final Map<String, Object> parameters, final ClusteringAlgorithm algorithm,
+                final double alpha) {
             this.parameters = parameters;
             this.algorithm = algorithm;
             this.alpha = alpha;
@@ -212,51 +285,51 @@ public class Detect {
     public static List<AlgorithmConfig> createGridSearchAlgorithms() {
         final List<AlgorithmConfig> result = new ArrayList<>();
 
-        final List<Double> resolutions = IntStream.range(1, 20)
-                .mapToObj(i -> 0.01 * i)
-                .collect(Collectors.toList());
-        final List<Double> alphas = IntStream.range(1, 10)
-                .mapToObj(i -> 0.02 * i)
-                .collect(Collectors.toList());
-        final int[] nIterationsValues = { 50 };
+        final List<Double> resolutions;
+        final List<Double> alphas;
+
+        if (false) {
+            resolutions = IntStream.range(1, 30)
+                    .mapToObj(i -> 0.01 * i)
+                    .collect(Collectors.toList());
+            alphas = IntStream.range(0, 10)
+                    .mapToObj(i -> 0.1 * i)
+                    .collect(Collectors.toList());
+            result.add(new AlgorithmConfig(new HashMap<>(), new ComponentsAlgorithm(), 1.0));
+        } else if (false) {
+            resolutions = IntStream.range(1, 15)
+                    .mapToObj(i -> 0.001 * i)
+                    .collect(Collectors.toList());
+            alphas = IntStream.range(4, 10)
+                    .mapToObj(i -> 0.1 * i)
+                    .collect(Collectors.toList());
+        } else {
+            resolutions = IntStream.range(2, 8)
+                    .mapToObj(i -> 0.001 * i)
+                    .collect(Collectors.toList());
+            alphas = IntStream.range(85, 98)
+                    .mapToObj(i -> 0.01 * i)
+                    .collect(Collectors.toList());
+        }
+
+        final int[] nIterationsValues = { 70 };
         final double[] randomnessValues = { 0.1 };
 
-        // for (final double resolution : resolutions) {
-        // for (final int nIter : nIterationsValues) {
-        // final Map<String, Object> params = new HashMap<>();
-        // params.put("resolution", resolution);
-        // params.put("nIterations", nIter);
-        // final FastLocalMovingAlgorithm algo = new
-        // FastLocalMovingAlgorithm(resolution, nIter,
-        // new Random(0));
-        // result.add(new AlgorithmConfig(params, algo, combo));
-        // }
-        // }
-
-        // for (final double resolution : resolutions) {
-        // for (final int nIter : nIterationsValues) {
-        // for (final double randomness : randomnessValues) {
-        // final Map<String, Object> params = new HashMap<>();
-        // params.put("resolution", resolution);
-        // params.put("nIterations", nIter);
-        // params.put("randomness", randomness);
-        // final LeidenAlgorithm algo = new LeidenAlgorithm(resolution, nIter,
-        // randomness, new Random(0));
-        // result.add(new AlgorithmConfig(params, algo));
-        // }
-        // }
-        // }
-
-        // for (final double resolution : resolutions) {
-        // for (final double randomness : randomnessValues) {
-        // final Map<String, Object> params = new HashMap<>();
-        // params.put("resolution", resolution);
-        // params.put("randomness", randomness);
-        // final LocalMergingAlgorithm algo = new LocalMergingAlgorithm(resolution,
-        // randomness, new Random(0));
-        // result.add(new AlgorithmConfig(params, algo, combo));
-        // }
-        // }
+        for (final double alpha : alphas) {
+            for (final double resolution : resolutions) {
+                for (final int nIter : nIterationsValues) {
+                    for (final double randomness : randomnessValues) {
+                        final Map<String, Object> params = new HashMap<>();
+                        params.put("resolution", resolution);
+                        params.put("nIterations", nIter);
+                        params.put("randomness", randomness);
+                        final LeidenAlgorithm algo = new LeidenAlgorithm(resolution, nIter,
+                                randomness, new Random(0));
+                        result.add(new AlgorithmConfig(params, algo, alpha));
+                    }
+                }
+            }
+        }
 
         for (final double alpha : alphas) {
             for (final double resolution : resolutions) {
@@ -269,8 +342,6 @@ public class Detect {
                 }
             }
         }
-
-        // result.add(new AlgorithmConfig(new HashMap<>(), new ComponentsAlgorithm()));
 
         return result;
     }
@@ -291,18 +362,15 @@ public class Detect {
             final List<AlgorithmConfig> algos = createGridSearchAlgorithms();
             System.err.printf("grid searching over %d permutations\n", algos.size());
 
-            algos.parallelStream().forEach(algo -> {
-                final List<ExternalEvaluation> eval = List.of(new Jaccard(), new Dice(), new FowlkesMallows());
-                final double[] results = tests.test(algo.algorithm, algo.alpha, eval);
-                System.out.printf("\"%s\",%f,%f,%f\n", algo, results[0], results[1],
-                        results[2]);
-            });
+            final List<ExternalEvaluation> eval = List.of(new Jaccard(), new Dice(), new FowlkesMallows(),
+                    new FalseDiscoveryRate(), new FalseNegativeRate());
+            System.out.println("algo,jaccard,dice,fowlkes_mallows,fdr,fnr");
 
-            // final ClusteringAlgorithm algo = new LeidenAlgorithm(0.008, 50, 0.1, new
-            // Random(0));
-            // final Combination combi = new WeightedLinearCombination(0.1);
-            // final List<ExternalEvaluation> eval = List.of(new Jaccard());
-            // tests.test(algo, combi, eval);
+            algos.parallelStream().forEach(algo -> {
+                final double[] results = tests.test(algo.algorithm, algo.alpha, eval);
+                System.out.printf("\"%s\",%f,%f,%f,%f,%f\n", algo, results[0], results[1],
+                        results[2], results[3], results[4]);
+            });
         }
     }
 }

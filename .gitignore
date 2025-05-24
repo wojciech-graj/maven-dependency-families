@@ -17,5 +17,11 @@ buildNumber.properties
 doc/
 *.jar
 *.png
-
+*.pgf
+*.csv
+core.*
+*.log
 .env
+.ropeproject/
+*.egg-info/
+__pycache__/

@@ -30,7 +30,7 @@ fn main() -> Result<()> {
     info!("starting reading CSV");
 
     let mut communities: HashMap<_, BTreeMap<_, _>> = HashMap::new();
-    let mut rdr = Reader::from_path("/Users/wojtek/Downloads/releases.csv")?;
+    let mut rdr = Reader::from_path("../releases.csv")?;
     for result in rdr.deserialize() {
         let record: Record = result?;
         let versions = communities.entry(record.community).or_default();

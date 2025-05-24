@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+S = 16
+
 matplotlib.use("pgf")
 matplotlib.rcParams.update({
     "pgf.texsystem": "pdflatex",
@@ -11,28 +13,22 @@ matplotlib.rcParams.update({
     'pgf.rcfonts': False,
     'axes.labelsize': 'small',
     'axes.titlesize': 'medium',
+    'scatter.marker': '.',
+    'figure.dpi': 600,
 })
 
 df = pd.read_csv("../family_sizes.csv")
 
 plt.figure(figsize=(3.4, 2.55))
-plt.scatter(df['sz'], df['count'], marker='.')
+plt.scatter(df['sz'], df['count'], color='black', s=S)
 plt.yscale('log')
 plt.xscale('log')
 plt.xlabel("Family Cardinality")
-plt.ylabel("Count of Families")
+plt.ylabel("Number of Families")
 plt.title("Frequency of Dependency Family Cardinalities")
 plt.tight_layout()
-plt.savefig('../2_1.pgf')
-
-plt.figure(figsize=(3.4, 2.55))
-plt.ecdf(df['sz'].values, weights=df['count'].values)
-plt.xscale('log')
-plt.xlabel("Family Cardinality")
-plt.ylabel("Cumulative Proportion")
-plt.title("Empirical CDF of\nDependency Family Cardinalities")
-plt.tight_layout()
-plt.savefig('../2_2.pgf')
+plt.savefig('../plots/2_1_1.pgf')
+plt.savefig('../plots/2_1_1.png')
 
 df = pd.read_csv("../use_freq.csv")
 
@@ -40,50 +36,84 @@ grouped = df.groupby('position')['usage'].apply(
     lambda x: x.values).sort_index().to_numpy()
 
 plt.figure(figsize=(3.4, 2.55))
-plt.violinplot(grouped[1:6],
-               positions=range(2, 7),
-               showmeans=False,
-               showmedians=False,
-               showextrema=False)
-plt.boxplot(grouped[1:6], positions=range(2, 7), showfliers=False)
-plt.xlabel("Frequency Rank Within Family")
+violin_plot = plt.violinplot(grouped[1:6],
+                             positions=range(2, 7),
+                             showmeans=False,
+                             showmedians=False,
+                             showextrema=False)
+for pc in violin_plot['bodies']:
+    pc.set_facecolor('gray')
+    pc.set_hatch('////////\\\\\\\\\\\\\\\\')
+box_plot = plt.boxplot(grouped[1:6],
+                       positions=range(2, 7),
+                       showfliers=False,
+                       patch_artist=True,
+                       boxprops={'fill': None})
+for median in box_plot['medians']:
+    median.set_color('black')
+plt.xlabel("Frequency Rank within Family")
 plt.ylabel("Normalized Usage Frequency")
-plt.title("Usage Rate of Dependencies Across Families\nby Frequency Rank",
+plt.title("Normalized Usage Rate of Dependencies\nby Frequency Rank in Family",
           wrap=True)
 plt.tight_layout()
-plt.savefig('../3_1.pgf')
+plt.savefig('../plots/2_2_1.pgf')
+plt.savefig('../plots/2_2_1.png')
 
-averages = np.array([np.mean(subarr) for subarr in grouped])[:1000]
+averages = np.array([np.mean(subarr) for subarr in grouped])
 
 plt.figure(figsize=(3.4, 2.55))
-plt.scatter(range(1, len(averages) + 1), averages, marker='.')
+plt.scatter(range(1, len(averages) + 1), averages, color='black', s=S)
 plt.yscale('log')
 plt.xscale('log')
-plt.xlabel("Frequency Rank")
+plt.xlabel("Frequency Rank within Family")
 plt.ylabel("Normalized Usage Frequency")
-plt.title("Usage Rate of Dependencies Across Families\nby Frequency Rank",
+plt.title("Normalized Usage Rate of Dependencies\nby Frequency Rank in Family",
           wrap=True)
 plt.tight_layout()
-plt.savefig('../3_2.pgf')
+plt.savefig('../plots/2_2_2.pgf')
+plt.savefig('../plots/2_2_2.png')
 
 df = pd.read_csv("../co_use.csv")
 
 plt.figure(figsize=(3.4, 2.55))
-plt.scatter(df['num_deps'], df['cnt'], marker='.')
+plt.scatter(df['num_deps'], df['cnt'], color='black', s=S)
 plt.yscale('log')
 plt.xscale('log')
-plt.xlabel("Count of Dependencies from Family Used Together")
-plt.ylabel("Occurrence Count")
+plt.xlabel("Number of Dependencies from Family Used Together")
+plt.ylabel("Total Occurrence Count")
 plt.title("Dependencies from the Same Family\nUsed Together")
 plt.tight_layout()
-plt.savefig('../4_1.pgf')
+plt.savefig('../plots/2_2_3.pgf')
+plt.savefig('../plots/2_2_3.png')
+
+df = pd.read_csv("../norm_co_use.csv")
+
+plt.figure(figsize=(3.4, 2.55))
+plt.hist(df['coeff'].values,
+         bins=20,
+         range=(0, 1),
+         hatch='////',
+         edgecolor='black',
+         color='gray')
+plt.xlabel("Proportion of Family Used Together")
+plt.ylabel("Total Occurrence Count")
+plt.title("Proportion of Dependency Families\nUsed Together")
+plt.tight_layout()
+plt.savefig('../plots/2_2_4.pgf')
+plt.savefig('../plots/2_2_4.png')
 
 df = pd.read_csv("../consistency_scores.csv")
 
 plt.figure(figsize=(3.4, 2.55))
-plt.hist(df['score'].values, bins=10, range=(0, 1), edgecolor='black')
+plt.hist(df['score'].values,
+         bins=20,
+         range=(0, 1),
+         hatch='////',
+         edgecolor='black',
+         color='gray')
 plt.xlabel("Average Homogeneity Score")
 plt.ylabel("Number of Families")
 plt.title("Average Homogeneity Score of\nDependency Families")
 plt.tight_layout()
-plt.savefig('../4_2.pgf')
+plt.savefig('../plots/2_3_1.pgf')
+plt.savefig('../plots/2_3_1.png')

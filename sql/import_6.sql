@@ -239,7 +239,7 @@ CREATE INDEX idx__self_artifact_overlap_coefficients_a_artifact_id ON self_artif
 
 CREATE INDEX idx__self_artifact_overlap_coefficients_b_artifact_id ON self_artifact_overlap_coefficients(b_artifact_id);
 
-CREATE TABLE communities_parents(
+CREATE TABLE communities(
     artifact_id INTEGER NOT NULL PRIMARY KEY REFERENCES artifacts(id),
     community INTEGER NOT NULL
 );

@@ -7,21 +7,19 @@ name = "plotter"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
-    "numpy",
     "matplotlib",
+    "numpy",
     "pandas"
 ]
 
 [project.optional-dependencies]
 dev = [
+    "pandas-stubs",
     "pylsp-mypy",
     "pylsp-rope",
     "python-lsp-isort",
     "python-lsp-server[all]"
 ]
 
-[tool.setuptools]
-py-modules = []
-
 [tool.pydocstyle]
-ignore = ["D101", "D102", "D103", "D107", "D205", "D208", "D212", "D400", "D415"]
+ignore = ["D100", "D101", "D102", "D103", "D107", "D205", "D208", "D212", "D400", "D415"]

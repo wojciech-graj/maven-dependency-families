@@ -2,10 +2,10 @@
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>net.w_graj</groupId>
-  <artifactId>connected_components</artifactId>
+  <artifactId>cluster</artifactId>
   <packaging>jar</packaging>
   <version>0.1.0</version>
-  <name>connected_components</name>
+  <name>cluster</name>
 
   <properties>
     <maven.compiler.source>1.8</maven.compiler.source>
@@ -39,7 +39,7 @@
           </execution>
         </executions>
         <configuration>
-          <mainClass>net.w_graj.connected_components.ConnectedComponents</mainClass>
+          <mainClass>net.w_graj.cluster.Cluster</mainClass>
           <arguments>
             <argument>index</argument>
             <argument>output</argument>

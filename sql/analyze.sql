@@ -2,7 +2,7 @@
 SELECT
     count(*) AS sz
 FROM
-    communities_parents
+    communities
 GROUP BY
     community
 )
@@ -27,11 +27,11 @@ GROUP BY
     to_artifact_id),
 community_counts AS (
     SELECT
-        communities_parents.community,
+        communities.community,
         usage_counts.cnt AS cnt
     FROM
         usage_counts
-    RIGHT JOIN communities_parents ON communities_parents.artifact_id = usage_counts.artifact_id),
+    RIGHT JOIN communities ON communities.artifact_id = usage_counts.artifact_id),
 maxs AS (
     SELECT
         community,
@@ -70,27 +70,27 @@ maxs AS (
 SELECT
     count(*) AS total_in_families
 FROM
-    communities_parents;
+    communities;
 
 SELECT
     count(*) AS total_not_in_families
 FROM
     artifacts
-    LEFT JOIN communities_parents ON communities_parents.artifact_id = artifacts.id
+    LEFT JOIN communities ON communities.artifact_id = artifacts.id
 WHERE
-    communities_parents.community IS NULL;
+    communities.community IS NULL;
 
 \copy (WITH num_deps AS (
 SELECT
     count(*) AS num_deps
 FROM
     dependencies
-    JOIN communities_parents ON communities_parents.artifact_id = dependencies.to_artifact_id
+    JOIN communities ON communities.artifact_id = dependencies.to_artifact_id
 WHERE
     NOT dependencies.managed
 GROUP BY
     dependencies.from_version_id,
-    communities_parents.community
+    communities.community
 )
 SELECT
     count(*) AS cnt,
@@ -100,6 +100,34 @@ FROM
 GROUP BY
     num_deps)
     TO 'co_use.csv' CSV HEADER;
+
+\copy (WITH num_deps AS (
+SELECT
+    communities.community,
+    count(*) AS num_deps
+FROM
+    dependencies
+    JOIN communities ON communities.artifact_id = dependencies.to_artifact_id
+WHERE
+    NOT dependencies.managed
+GROUP BY
+    dependencies.from_version_id,
+    communities.community),
+community_sizes AS (
+    SELECT
+        community,
+        count(*) AS sz
+    FROM
+        communities
+    GROUP BY
+        community
+)
+SELECT
+    cast(num_deps AS REAL) / community_sizes.sz AS coeff
+FROM
+    num_deps
+    JOIN community_sizes ON community_sizes.community = num_deps.community)
+    TO 'norm_co_use.csv' CSV HEADER;
 
 WITH counts AS (
     SELECT
@@ -118,18 +146,18 @@ WITH counts AS (
         count(DISTINCT versions.id) > 1
 )
 SELECT
-    sum(counts.cnt) FILTER (WHERE communities_parents.community IS NULL) AS empty_release_count_outside_families,
-    sum(counts.cnt) FILTER (WHERE communities_parents.community IS NOT NULL) AS empty_release_count_inside_families
+    sum(counts.cnt) FILTER (WHERE communities.community IS NULL) AS empty_release_count_outside_families,
+    sum(counts.cnt) FILTER (WHERE communities.community IS NOT NULL) AS empty_release_count_inside_families
 FROM
     counts
-    LEFT JOIN communities_parents ON communities_parents.artifact_id = counts.artifact_id;
+    LEFT JOIN communities ON communities.artifact_id = counts.artifact_id;
 
 SELECT
-    count(*) FILTER (WHERE communities_parents.community IS NULL) AS total_release_count_outside_families,
-    count(*) FILTER (WHERE communities_parents.community IS NOT NULL) AS total_release_count_inside_families
+    count(*) FILTER (WHERE communities.community IS NULL) AS total_release_count_outside_families,
+    count(*) FILTER (WHERE communities.community IS NOT NULL) AS total_release_count_inside_families
 FROM
     versions
-    LEFT JOIN communities_parents ON communities_parents.artifact_id = versions.artifact_id;
+    LEFT JOIN communities ON communities.artifact_id = versions.artifact_id;
 
 \copy (WITH release_dates AS (
 SELECT
@@ -137,7 +165,7 @@ SELECT
     max(files.artifact_last_modified) AS release_date
 FROM
     versions
-    JOIN communities_parents ON communities_parents.artifact_id = versions.artifact_id
+    JOIN communities ON communities.artifact_id = versions.artifact_id
     JOIN files ON files.version_id = versions.id
 GROUP BY
     versions.id
@@ -146,9 +174,21 @@ SELECT
     versions.version,
     versions.artifact_id,
     release_dates.release_date,
-    communities_parents.community
+    communities.community
 FROM
     release_dates
     JOIN versions ON versions.id = release_dates.id
-    JOIN communities_parents ON communities_parents.artifact_id = versions.artifact_id)
+    JOIN communities ON communities.artifact_id = versions.artifact_id)
     TO 'releases.csv' CSV HEADER;
+
+SELECT
+    count(DISTINCT versions.artifact_id)
+FROM
+    bundle_versions
+    JOIN files ON files.id = bundle_versions.file_id
+    JOIN versions ON versions.id = files.version_id;
+
+SELECT
+    count(*)
+FROM
+    communities;
