@@ -25,7 +25,7 @@ plt.yscale('log')
 plt.xscale('log')
 plt.xlabel("Family Cardinality")
 plt.ylabel("Number of Families")
-plt.title("Frequency of Dependency Family Cardinalities")
+# plt.title("Frequency of Dependency Family Cardinalities")
 plt.tight_layout()
 plt.savefig('../plots/2_1_1.pgf')
 plt.savefig('../plots/2_1_1.png')
@@ -53,8 +53,8 @@ for median in box_plot['medians']:
     median.set_color('black')
 plt.xlabel("Frequency Rank within Family")
 plt.ylabel("Normalized Usage Frequency")
-plt.title("Normalized Usage Rate of Dependencies\nby Frequency Rank in Family",
-          wrap=True)
+# plt.title("Normalized Usage Rate of Dependencies\nby Frequency Rank in Family",
+#           wrap=True)
 plt.tight_layout()
 plt.savefig('../plots/2_2_1.pgf')
 plt.savefig('../plots/2_2_1.png')
@@ -67,8 +67,8 @@ plt.yscale('log')
 plt.xscale('log')
 plt.xlabel("Frequency Rank within Family")
 plt.ylabel("Normalized Usage Frequency")
-plt.title("Normalized Usage Rate of Dependencies\nby Frequency Rank in Family",
-          wrap=True)
+# plt.title("Normalized Usage Rate of Dependencies\nby Frequency Rank in Family",
+#           wrap=True)
 plt.tight_layout()
 plt.savefig('../plots/2_2_2.pgf')
 plt.savefig('../plots/2_2_2.png')
@@ -81,7 +81,7 @@ plt.yscale('log')
 plt.xscale('log')
 plt.xlabel("Number of Dependencies from Family Used Together")
 plt.ylabel("Total Occurrence Count")
-plt.title("Dependencies from the Same Family\nUsed Together")
+# plt.title("Dependencies from the Same Family\nUsed Together")
 plt.tight_layout()
 plt.savefig('../plots/2_2_3.pgf')
 plt.savefig('../plots/2_2_3.png')
@@ -97,7 +97,7 @@ plt.hist(df['coeff'].values,
          color='gray')
 plt.xlabel("Proportion of Family Used Together")
 plt.ylabel("Total Occurrence Count")
-plt.title("Proportion of Dependency Families\nUsed Together")
+# plt.title("Proportion of Dependency Families\nUsed Together")
 plt.tight_layout()
 plt.savefig('../plots/2_2_4.pgf')
 plt.savefig('../plots/2_2_4.png')
@@ -111,9 +111,25 @@ plt.hist(df['score'].values,
          hatch='////',
          edgecolor='black',
          color='gray')
-plt.xlabel("Average Homogeneity Score")
+plt.xlabel("Mean Homogeneity Score")
 plt.ylabel("Number of Families")
-plt.title("Average Homogeneity Score of\nDependency Families")
+# plt.title("Mean Homogeneity Score of\nDependency Families")
 plt.tight_layout()
 plt.savefig('../plots/2_3_1.pgf')
 plt.savefig('../plots/2_3_1.png')
+
+df = pd.read_csv("../release_size_diffs.csv")
+
+values = df['size_diff'].values
+plt.figure(figsize=(3.4, 2.55))
+plt.hist(values[values < 32],
+         bins=16,
+         hatch='////',
+         edgecolor='black',
+         color='gray')
+plt.xlabel("Absolute Difference in Source Size (B)")
+plt.ylabel("Occurrence Count")
+# plt.title("Absolute Difference in Source Size\nBetween Consecutive Releases")
+plt.tight_layout()
+plt.savefig('../plots/2_3_2.pgf')
+plt.savefig('../plots/2_3_2.png')

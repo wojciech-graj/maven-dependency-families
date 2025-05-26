@@ -13,3 +13,7 @@ CREATE TABLE parents(
     to_artifact_id INTEGER NOT NULL REFERENCES artifacts(id),
     PRIMARY KEY (from_artifact_id, to_artifact_id)
 );
+
+CREATE TABLE is_reproducible(
+    version_id INTEGER NOT NULL PRIMARY KEY REFERENCES versions(id)
+);

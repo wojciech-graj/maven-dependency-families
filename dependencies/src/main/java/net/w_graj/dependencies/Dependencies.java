@@ -6,6 +6,7 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Properties;
 
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.DependencyManagement;
@@ -51,8 +52,11 @@ public class Dependencies {
             + "\n    versions.id = ?"
             + "\n    AND artifacts.group_id = ?"
             + "\n    AND artifacts.artifact_id = ?"
-        + "\nON CONFLICT(from_artifact_id, to_artifact_id)"
-        + "\n    DO NOTHING";
+            + "\nON CONFLICT(from_artifact_id, to_artifact_id)"
+            + "\n    DO NOTHING";
+
+    private static final String INSERT_IS_REPRODUCIBLE = "INSERT INTO is_reproducible(version_id)"
+            + "\n    VALUES (?)";
 
     public static void main(final String[] args) throws Exception {
         try (
@@ -60,7 +64,8 @@ public class Dependencies {
                 final PreparedStatement select = conn.prepareStatement(
                         SELECT_SQL, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
                 final PreparedStatement insertDependency = conn.prepareStatement(INSERT_DEPENDENCY_SQL);
-            final PreparedStatement insertParent = conn.prepareStatement(INSERT_PARENT_SQL);) {
+                final PreparedStatement insertParent = conn.prepareStatement(INSERT_PARENT_SQL);
+                final PreparedStatement insertIsReproducible = conn.prepareStatement(INSERT_IS_REPRODUCIBLE);) {
             conn.setAutoCommit(false);
             select.setFetchSize(FETCH_SIZE);
             final ResultSet rs = select.executeQuery();
@@ -68,6 +73,7 @@ public class Dependencies {
             int rowCount = 0;
             int dependencyBatchCount = 0;
             int parentBatchCount = 0;
+            int isReproducibleBatchCount = 0;
             final MavenXpp3Reader reader = new MavenXpp3Reader();
 
             while (rs.next()) {
@@ -95,7 +101,8 @@ public class Dependencies {
                 final DependencyManagement dependencyManagement = pom.getDependencyManagement();
                 if (dependencyManagement != null) {
                     for (final Dependency dependency : dependencyManagement.getDependencies()) {
-                        insertDependency(insertDependency, versionId, dependency.getVersion(), dependency.getScope(), true,
+                        insertDependency(insertDependency, versionId, dependency.getVersion(), dependency.getScope(),
+                                true,
                                 dependency.getGroupId(), dependency.getArtifactId());
                         dependencyBatchCount++;
 
@@ -108,6 +115,13 @@ public class Dependencies {
                     parentBatchCount++;
                 }
 
+                final Properties props = pom.getProperties();
+                final boolean isReproducible = props.get("project.build.outputTimestamp") != null;
+                if (isReproducible) {
+                    insertIsReproducible(insertIsReproducible, versionId);
+                    isReproducibleBatchCount++;
+                }
+
                 if (dependencyBatchCount >= BATCH_SIZE) {
                     flushBatch(insertDependency);
                     dependencyBatchCount = 0;
@@ -117,10 +131,16 @@ public class Dependencies {
                     flushBatch(insertParent);
                     parentBatchCount = 0;
                 }
+
+                if (isReproducibleBatchCount >= BATCH_SIZE) {
+                    flushBatch(insertIsReproducible);
+                    isReproducibleBatchCount = 0;
+                }
             }
 
             flushBatch(insertDependency);
             flushBatch(insertParent);
+            flushBatch(insertIsReproducible);
 
             conn.commit();
         }
@@ -138,10 +158,16 @@ public class Dependencies {
         insert.addBatch();
     }
 
-    private static void insertParent(final PreparedStatement insert, final int versionId, final String groupId, final String artifactId) throws SQLException {
+    private static void insertParent(final PreparedStatement insert, final int versionId, final String groupId,
+            final String artifactId) throws SQLException {
         insert.setInt(1, versionId);
         insert.setString(2, groupId);
         insert.setString(3, artifactId);
+        insert.addBatch();
+    }
+
+    private static void insertIsReproducible(final PreparedStatement insert, final int versionId) throws SQLException {
+        insert.setInt(1, versionId);
         insert.addBatch();
     }
 

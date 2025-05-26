@@ -132,7 +132,7 @@ FROM
 WITH counts AS (
     SELECT
         versions.artifact_id,
-        count(DISTINCT versions.id) AS cnt
+        count(DISTINCT versions.id) - 1 AS cnt
     FROM
         files
         JOIN versions ON versions.id = files.version_id
@@ -157,7 +157,17 @@ SELECT
     count(*) FILTER (WHERE communities.community IS NOT NULL) AS total_release_count_inside_families
 FROM
     versions
-    LEFT JOIN communities ON communities.artifact_id = versions.artifact_id;
+    LEFT JOIN communities ON communities.artifact_id = versions.artifact_id
+WHERE
+    EXISTS (
+        SELECT
+            *
+        FROM
+            files
+        WHERE
+            files.version_id = versions.id
+            AND files.classifier = 'sources'
+            AND files.packaging = 'jar');
 
 \copy (WITH release_dates AS (
 SELECT
@@ -191,4 +201,47 @@ FROM
 SELECT
     count(*)
 FROM
-    communities;
+    is_reproducible;
+
+\copy (SELECT
+size_diff
+FROM (
+    SELECT
+        abs(lead(f.size) OVER (PARTITION BY v.artifact_id ORDER BY f.artifact_last_modified) - f.size) AS size_diff
+    FROM
+        files f
+        JOIN versions v ON v.id = f.version_id
+    WHERE
+        f.classifier = 'sources'
+        AND f.packaging = 'jar') sub
+WHERE
+    size_diff IS NOT NULL)
+TO 'release_size_diffs.csv' CSV HEADER;
+
+WITH diffs AS (
+    SELECT
+        v.artifact_id,
+        lead(f.size) OVER (PARTITION BY v.artifact_id ORDER BY f.artifact_last_modified) - f.size AS size_diff
+    FROM
+        files f
+        JOIN versions v ON v.id = f.version_id
+    WHERE
+        f.classifier = 'sources'
+        AND f.packaging = 'jar'
+),
+filtered_diffs AS (
+    SELECT
+        d.artifact_id,
+        d.size_diff
+    FROM
+        diffs d
+    WHERE
+        d.size_diff IS NOT NULL
+        AND abs(d.size_diff) <= 4
+)
+SELECT
+    count(*) FILTER (WHERE c.artifact_id IS NOT NULL) AS releases_inside_community_with_diff_leq4,
+    count(*) FILTER (WHERE c.artifact_id IS NULL) AS releases_outside_community_with_diff_leq4
+FROM
+    filtered_diffs fd
+    LEFT JOIN communities c ON c.artifact_id = fd.artifact_id;
