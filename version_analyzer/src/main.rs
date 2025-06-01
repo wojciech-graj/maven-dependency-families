@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, hash_map::Entry},
     time::Duration,
 };
 
@@ -58,7 +58,13 @@ fn main() -> Result<()> {
             let end = window[1];
             let window_duration = end.release_date - start.release_date;
             if let Some(prev) = current_versions.insert(start.artifact_id, &start.version) {
-                *version_counts.get_mut(prev).unwrap() -= 1;
+                if let Entry::Occupied(mut entry) = version_counts.entry(prev) {
+                    if entry.get() == &1 {
+                        entry.remove();
+                    } else {
+                        *entry.get_mut() -= 1;
+                    }
+                }
             }
             *version_counts.entry(&start.version).or_default() += 1;
             if current_versions.len() <= 1 {
@@ -76,7 +82,7 @@ fn main() -> Result<()> {
 
     info!("finished calculating scores");
 
-    let mut wtr = csv::Writer::from_path("consistency_scores.csv")?;
+    let mut wtr = csv::Writer::from_path("../consistency_scores.csv")?;
     wtr.write_record(&["score"])?;
 
     for output in outputs {

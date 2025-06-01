@@ -1,3 +1,4 @@
+-- Occurrence count of each cardinality of dependency family
 \copy (WITH cnts AS (
 SELECT
     count(*) AS sz
@@ -15,6 +16,7 @@ GROUP BY
     sz)
     TO 'family_sizes.csv' CSV HEADER;
 
+-- Normalized usage frequency by frequency rank
 \copy (WITH usage_counts AS (
 SELECT
     to_artifact_id AS artifact_id,
@@ -67,19 +69,13 @@ maxs AS (
         positions.position ASC)
     TO 'use_freq.csv' CSV HEADER;
 
+-- Total artifacts in dependency families
 SELECT
     count(*) AS total_in_families
 FROM
     communities;
 
-SELECT
-    count(*) AS total_not_in_families
-FROM
-    artifacts
-    LEFT JOIN communities ON communities.artifact_id = artifacts.id
-WHERE
-    communities.community IS NULL;
-
+-- Occurrence count of each dependency co-use cardinality
 \copy (WITH num_deps AS (
 SELECT
     count(*) AS num_deps
@@ -101,6 +97,7 @@ GROUP BY
     num_deps)
     TO 'co_use.csv' CSV HEADER;
 
+-- Normalized co-use of dependencies in families
 \copy (WITH num_deps AS (
 SELECT
     communities.community,
@@ -129,6 +126,7 @@ FROM
     JOIN community_sizes ON community_sizes.community = num_deps.community)
     TO 'norm_co_use.csv' CSV HEADER;
 
+-- Identical release frequency inside and outside of dependency families
 WITH counts AS (
     SELECT
         versions.artifact_id,
@@ -152,6 +150,7 @@ FROM
     counts
     LEFT JOIN communities ON communities.artifact_id = counts.artifact_id;
 
+-- Total release count inside and outside of dependency families with source JARs
 SELECT
     count(*) FILTER (WHERE communities.community IS NULL) AS total_release_count_outside_families,
     count(*) FILTER (WHERE communities.community IS NOT NULL) AS total_release_count_inside_families
@@ -169,6 +168,15 @@ WHERE
             AND files.classifier = 'sources'
             AND files.packaging = 'jar');
 
+-- Total release count inside and outside of dependency families
+SELECT
+    count(*) FILTER (WHERE communities.community IS NULL) AS total_release_count_outside_families,
+    count(*) FILTER (WHERE communities.community IS NOT NULL) AS total_release_count_inside_families
+FROM
+    versions
+    LEFT JOIN communities ON communities.artifact_id = versions.artifact_id;
+
+-- Release dates of all releases
 \copy (WITH release_dates AS (
 SELECT
     versions.id,
@@ -191,6 +199,7 @@ FROM
     JOIN communities ON communities.artifact_id = versions.artifact_id)
     TO 'releases.csv' CSV HEADER;
 
+-- Artifact count with OSGi metadata
 SELECT
     count(DISTINCT versions.artifact_id)
 FROM
@@ -198,11 +207,30 @@ FROM
     JOIN files ON files.id = bundle_versions.file_id
     JOIN versions ON versions.id = files.version_id;
 
+-- Artifact count with reproducible releases, accounting for POM inheritance
+WITH RECURSIVE reproducible_versions AS (
+    SELECT
+        v.id AS version_id,
+        v.artifact_id
+    FROM
+        versions v
+        JOIN is_reproducible r ON v.id = r.version_id
+UNION
 SELECT
-    count(*)
+    v_parent.id AS version_id,
+    v_parent.artifact_id
 FROM
-    is_reproducible;
+    reproducible_versions rv
+    JOIN versions v_child ON v_child.id = rv.version_id
+    JOIN parents p ON p.to_artifact_id = v_child.artifact_id
+    JOIN versions v_parent ON v_parent.artifact_id = p.from_artifact_id
+)
+SELECT
+    count(DISTINCT artifact_id) AS reproducible_artifact_count
+FROM
+    reproducible_versions;
 
+-- Release size differences
 \copy (SELECT
 size_diff
 FROM (
@@ -218,6 +246,7 @@ WHERE
     size_diff IS NOT NULL)
 TO 'release_size_diffs.csv' CSV HEADER;
 
+-- Releases with size difference <= 4 inside and outside of dependency families
 WITH diffs AS (
     SELECT
         v.artifact_id,
@@ -245,3 +274,51 @@ SELECT
 FROM
     filtered_diffs fd
     LEFT JOIN communities c ON c.artifact_id = fd.artifact_id;
+
+-- Total comparisons required to calculate any non-sparse pairwise statistic
+WITH per_family_cmp_count AS (
+    SELECT
+        (count(*) *(count(*) - 1)) / 2 AS comparisons
+    FROM
+        artifacts
+    GROUP BY
+        root_group_id
+)
+SELECT
+    sum(comparisons) AS comparisons
+FROM
+    per_family_cmp_count;
+
+-- Community count with size > 100
+WITH sizes AS (
+    SELECT
+        count(*) AS sz
+    FROM
+        communities
+    GROUP BY
+        community
+    HAVING
+        count(*) > 100
+)
+SELECT
+    count(sz) AS large_communities
+FROM
+    sizes;
+
+-- Community count
+SELECT
+    count(DISTINCT community) AS total_communities
+FROM
+    communities;
+
+-- POM count
+SELECT
+    count(*)
+FROM
+    poms;
+
+-- POM total size (B)
+SELECT
+    sum(octet_length(value))
+FROM
+    poms;
