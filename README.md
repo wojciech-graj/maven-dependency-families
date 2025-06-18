@@ -2,6 +2,8 @@
 
 This repository contains all the source code for the "Dependency Families in the Maven Ecosystem: An Analysis of Software Dependency Graphs" thesis for the BSc. CSE at TU Delft.
 
+https://resolver.tudelft.nl/67d109a8-e7b6-45eb-995c-f2cf8851ac69
+
 ## Usage
 
 Note that >24 hours will be required to generate the dataset. It is recommended to make >16 GB RAM available to Postgresql. Cargo (Rust), Maven (Java), Python 3, and Postgresql are needed.
